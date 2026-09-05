@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'services/tvmaze_service.dart';
+
 void main() {
   runApp(const MeuApp());
 }
@@ -26,8 +28,68 @@ class MeuApp extends StatelessWidget {
   }
 }
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+final TextEditingController _searchController = TextEditingController();
+List<dynamic> _resultados = [];
+bool _carregando = false;
+
+Future<void> _buscarSeries() async {
+  if (_searchController.text.trim().isEmpty) return;
+
+  setState(() {
+    _carregando = true;
+  });
+
+  try {
+    final resultados = await TvmazeService().buscarSeries(
+      _searchController.text.trim(),
+    );
+
+    setState(() {
+      _resultados = resultados;
+      _carregando = false;
+    });
+  } catch (e) {
+    setState(() {
+      _carregando = false;
+    });
+
+    debugPrint('Erro ao buscar séries: $e');
+  }
+}
+
+Future<void> _abrirEpisodios(int id, String nome) async {
+  try {
+    final episodios = await TvmazeService().buscarSeriePorId(id);
+
+    if (!mounted) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EpisodiosPage(
+          nome: nome,
+          episodios: episodios,
+        ),
+      ),
+    );
+  } catch (e) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Erro ao buscar episódios: $e'),
+      ),
+    );
+  }
+}
 
   @override
   Widget build(BuildContext context) {
@@ -42,7 +104,7 @@ class HomePage extends StatelessWidget {
         ),
         actions: [
           IconButton(
-            onPressed: () {},
+            onPressed: _buscarSeries,
             icon: const Icon(Icons.search),
           ),
         ],
@@ -53,6 +115,63 @@ class HomePage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+
+          TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: 'Buscar filme ou série...',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.arrow_forward),
+                onPressed: _buscarSeries,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(15),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
+          if (_carregando)
+            const Center(
+              child: CircularProgressIndicator(),
+            ),
+
+       if (!_carregando && _resultados.isNotEmpty)
+  ..._resultados.map(
+    (resultado) {
+      final show = resultado['show'];
+
+      return Card(
+        child: ListTile(
+          title: Text(
+            show['name'] ?? 'Sem nome',
+          ),
+          subtitle: Text(
+            show['premiered'] ?? 'Data desconhecida',
+          ),
+          trailing: const Icon(
+            Icons.arrow_forward,
+          ),
+          onTap: () {
+           final rawId = show['id'];
+
+if (rawId is int) {
+  _abrirEpisodios(
+    rawId,
+    show['name'] ?? 'Sem nome',
+  );
+} else {
+  debugPrint('ID inesperado: $rawId');
+  debugPrint('Tipo do ID: ${rawId.runtimeType}');
+}
+          },
+        ),
+      );
+    },
+  ),
+          const SizedBox(height: 20),
 
             const Text(
               'Continuar assistindo',
@@ -252,6 +371,69 @@ class HomePage extends StatelessWidget {
     );
   }
 }
+class EpisodiosPage extends StatefulWidget {
+  final String nome;
+  final List<dynamic> episodios;
+
+  const EpisodiosPage({
+    super.key,
+    required this.nome,
+    required this.episodios,
+  });
+
+  @override
+  State<EpisodiosPage> createState() => _EpisodiosPageState();
+}
+
+class _EpisodiosPageState extends State<EpisodiosPage> {
+  final Set<int> _assistidos = {};
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.nome),
+      ),
+      body: ListView.builder(
+        itemCount: widget.episodios.length,
+        itemBuilder: (context, index) {
+          final episodio = widget.episodios[index];
+          final assistido = _assistidos.contains(index);
+
+          return Card(
+            child: ListTile(
+              leading: CircleAvatar(
+                child: Text(
+                  '${episodio['number'] ?? '?'}',
+                ),
+              ),
+              title: Text(
+                episodio['name'] ?? 'Episódio sem nome',
+              ),
+              subtitle: Text(
+                'Temporada ${episodio['season'] ?? '?'}',
+              ),
+              trailing: Checkbox(
+                value: assistido,
+                onChanged: (value) {
+                  setState(() {
+                    if (value == true) {
+                      _assistidos.add(index);
+                    } else {
+                      _assistidos.remove(index);
+                    }
+                  });
+                },
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+
 
 class CategoryCard extends StatelessWidget {
   final IconData icon;
