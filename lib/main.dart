@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-
+import 'package:shared_preferences/shared_preferences.dart';
 import 'services/tvmaze_service.dart';
 
 void main() {
@@ -75,9 +75,10 @@ Future<void> _abrirEpisodios(int id, String nome) async {
       context,
       MaterialPageRoute(
         builder: (context) => EpisodiosPage(
-          nome: nome,
-          episodios: episodios,
-        ),
+  id: id,
+  nome: nome,
+  episodios: episodios,
+),
       ),
     );
   } catch (e) {
@@ -319,26 +320,6 @@ if (rawId is int) {
             ),
 
             const SizedBox(height: 30),
-
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: () {
-                  Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const AddContentPage(), 
-                  ),
-                 );
-                },
-                icon: const Icon(Icons.add),
-                label: const Text(
-                  'Adicionar filme ou série',
-                  style: TextStyle(fontSize: 16),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 20),
           ],
         ),
       ),
@@ -372,14 +353,16 @@ if (rawId is int) {
   }
 }
 class EpisodiosPage extends StatefulWidget {
+  final int id;
   final String nome;
   final List<dynamic> episodios;
 
-  const EpisodiosPage({
-    super.key,
-    required this.nome,
-    required this.episodios,
-  });
+ const EpisodiosPage({
+  super.key,
+  required this.id,
+  required this.nome,
+  required this.episodios,
+});
 
   @override
   State<EpisodiosPage> createState() => _EpisodiosPageState();
@@ -389,12 +372,76 @@ class _EpisodiosPageState extends State<EpisodiosPage> {
   final Set<int> _assistidos = {};
 
   @override
+  void initState() {
+    super.initState();
+    _carregarAssistidos();
+  }
+
+  Future<void> _carregarAssistidos() async {
+    final prefs = await SharedPreferences.getInstance();
+
+   final salvos = prefs.getStringList('assistidos_${widget.id}') ?? [];
+
+    setState(() {
+      _assistidos.addAll(
+        salvos.map((e) => int.parse(e)),
+      );
+    });
+  }
+
+  Future<void> _salvarAssistidos() async {
+    final prefs = await SharedPreferences.getInstance();
+
+   await prefs.setStringList(
+  'assistidos_${widget.id}',
+  _assistidos.map((e) => e.toString()).toList(),
+);
+  }
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.nome),
       ),
-      body: ListView.builder(
+      body: Column(
+  children: [
+    Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${_assistidos.length} de ${widget.episodios.length} episódios assistidos',
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
+          LinearProgressIndicator(
+            value: widget.episodios.isEmpty
+                ? 0
+                : _assistidos.length / widget.episodios.length,
+            minHeight: 8,
+            borderRadius: BorderRadius.circular(10),
+          ),
+
+          const SizedBox(height: 8),
+
+          Text(
+            '${widget.episodios.isEmpty ? 0 : ((_assistidos.length / widget.episodios.length) * 100).round()}% concluído',
+            style: const TextStyle(
+              color: Colors.white70,
+            ),
+          ),
+        ],
+      ),
+    ),
+
+    Expanded(
+      child: ListView.builder(
         itemCount: widget.episodios.length,
         itemBuilder: (context, index) {
           final episodio = widget.episodios[index];
@@ -423,12 +470,17 @@ class _EpisodiosPageState extends State<EpisodiosPage> {
                       _assistidos.remove(index);
                     }
                   });
+
+                  _salvarAssistidos();
                 },
               ),
             ),
           );
         },
       ),
+    ),
+  ],
+),
     );
   }
 }
